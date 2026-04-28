@@ -77,6 +77,13 @@
         class="px-4 py-1.5 bg-emerald-600 text-white rounded text-sm hover:bg-emerald-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed">
         {{ archiving ? '歸檔中...' : '☁️ 歸檔到 Drive' }}
       </button>
+
+      <!-- 載入報價單 -->
+      <button @click="$refs.importFile.click()"
+        class="px-4 py-1.5 bg-amber-500 text-white rounded text-sm hover:bg-amber-600 transition-colors font-medium">
+        📂 載入報價單
+      </button>
+      <input ref="importFile" type="file" accept=".json" class="hidden" @change="loadFromFile">
     </div>
   </div>
 
@@ -837,6 +844,33 @@ ${quoteEl.outerHTML}
       this.quoteMode = wasMode
       this.previewMode = wasPreview
       this.archiving = false
+    },
+
+    loadFromFile(e) {
+      const file = e.target.files[0]
+      if (!file) return
+      const reader = new FileReader()
+      reader.onload = (ev) => {
+        try {
+          const s = JSON.parse(ev.target.result)
+          if (!s.quote || !s.categories) {
+            this.showToast('檔案格式不符，請選擇正確的報價單 JSON', 'error')
+            return
+          }
+          Object.assign(this.quote, s.quote)
+          Object.assign(this.client, s.client || {})
+          this.categories = s.categories
+          if (s.notes !== undefined) this.notes = s.notes
+          if (s.tax)      Object.assign(this.tax, s.tax)
+          if (s.discount) Object.assign(this.discount, s.discount)
+          this.previewMode = false
+          this.showToast('✅ 報價單載入成功，可繼續編輯')
+        } catch {
+          this.showToast('檔案讀取失敗，請確認是否為正確的 JSON 檔', 'error')
+        }
+        e.target.value = ''
+      }
+      reader.readAsText(file)
     }
   },
 
