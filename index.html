@@ -745,13 +745,15 @@ createApp({
       this.previewMode = true
       await this.$nextTick()
       const suffix = mode === 'client' ? '業主版' : '廠商版'
+      window.scrollTo(0, 0)
+      await this.$nextTick()
       await html2pdf().set({
         margin: 0,
         filename: `${this.quote.number}_${this.client.company || '報價單'}_${suffix}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, logging: false },
+        html2canvas: { scale: 2, useCORS: true, logging: false, scrollY: 0 },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+        pagebreak: { mode: ['css', 'legacy'], avoid: 'tr' }
       }).from(document.getElementById('quote-document')).save()
       this.quoteMode   = wasMode
       this.previewMode = wasPreview
@@ -845,12 +847,13 @@ ${quoteEl.outerHTML}
       try {
         const pdfOptions = {
           margin: 0, image: { type: 'jpeg', quality: 0.92 },
-          html2canvas: { scale: 2, useCORS: true, logging: false },
+          html2canvas: { scale: 2, useCORS: true, logging: false, scrollY: 0 },
           jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-          pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+          pagebreak: { mode: ['css', 'legacy'], avoid: 'tr' }
         }
 
         this.previewMode = true
+        window.scrollTo(0, 0)
 
         // 1. 廠商版 PDF
         this.quoteMode = 'vendor'
