@@ -716,49 +716,127 @@ createApp({
       localStorage.setItem('quoteClientHistory', JSON.stringify(this.clientHistory))
     },
 
+    blobToBase64(blob) {
+      return new Promise(res => {
+        const r = new FileReader()
+        r.onload = e => res(e.target.result.split(',')[1])
+        r.readAsDataURL(blob)
+      })
+    },
+
+    captureViewHtml() {
+      const quoteEl = document.getElementById('quote-document')
+      if (!quoteEl) return ''
+      return `<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<title>${this.quote.number} ${this.client.company || ''} 報價單</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+body { font-family: 'Segoe UI', 'Noto Sans TC', sans-serif; background: #f1f5f9; padding: 20px; margin: 0; }
+.quote-page { width: 210mm; min-height: 297mm; margin: 0 auto; background: white; padding: 16mm 18mm; box-shadow: 0 2px 20px rgba(0,0,0,0.12); }
+@media print { body { background: white; padding: 0; } .quote-page { box-shadow: none; padding: 10mm 14mm; } }
+</style>
+</head>
+<body>
+${quoteEl.outerHTML}
+</body>
+</html>`
+    },
+
+    submitToScript(payload) {
+      const frameId = 'gs-archive-frame'
+      let iframe = document.getElementById(frameId)
+      if (!iframe) {
+        iframe = document.createElement('iframe')
+        iframe.id = frameId; iframe.name = frameId; iframe.style.display = 'none'
+        document.body.appendChild(iframe)
+      }
+      const form = document.createElement('form')
+      form.method = 'POST'; form.action = this.settings.scriptUrl; form.target = frameId
+      const input = document.createElement('input')
+      input.type = 'hidden'; input.name = 'payload'; input.value = payload
+      form.appendChild(input); document.body.appendChild(form)
+      form.submit(); document.body.removeChild(form)
+    },
+
     async archiveToDrive() {
       if (!this.settings.scriptUrl) { this.showToast('請先填入 Google Apps Script 網址', 'error'); return }
+      if (!this.client.company) { this.showToast('請先填入客戶名稱才能歸檔', 'error'); return }
       this.saveClientToHistory()
       this.archiving = true
-      const was = this.previewMode; this.previewMode = true; await this.$nextTick()
+
+      const wasMode = this.quoteMode
+      const wasPreview = this.previewMode
+
       try {
-        const blob = await html2pdf().set({
+        const pdfOptions = {
           margin: 0, image: { type: 'jpeg', quality: 0.92 },
           html2canvas: { scale: 2, useCORS: true, logging: false },
           jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
           pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
-        }).from(document.getElementById('quote-document')).outputPdf('blob')
+        }
 
-        const b64 = await new Promise(res => {
-          const r = new FileReader(); r.onload = e => res(e.target.result.split(',')[1]); r.readAsDataURL(blob)
+        this.previewMode = true
+
+        // 1. 廠商版 PDF
+        this.quoteMode = 'vendor'
+        await this.$nextTick()
+        const vendorBlob = await html2pdf().set(pdfOptions).from(document.getElementById('quote-document')).outputPdf('blob')
+        const vendorPdfB64 = await this.blobToBase64(vendorBlob)
+        const vendorHtml = this.captureViewHtml()
+
+        // 2. 業主版 PDF
+        this.quoteMode = 'client'
+        await this.$nextTick()
+        const clientBlob = await html2pdf().set(pdfOptions).from(document.getElementById('quote-document')).outputPdf('blob')
+        const clientPdfB64 = await this.blobToBase64(clientBlob)
+        const clientHtml = this.captureViewHtml()
+
+        // 3. 完整資料（可重新載入編輯）
+        const stateJson = JSON.stringify({
+          version: '2.0',
+          savedAt: new Date().toISOString(),
+          quote: this.quote,
+          client: this.client,
+          categories: JSON.parse(JSON.stringify(this.categories)),
+          notes: this.notes,
+          tax: this.tax,
+          discount: this.discount
         })
+
+        const baseFileName = `${this.quote.number}_${this.client.company}`.replace(/[\/\\:*?"<>|]/g, '_')
 
         const payload = JSON.stringify({
-          quoteNumber: this.quote.number, date: this.quote.date,
-          clientCompany: this.client.company, clientContact: this.client.contact,
-          eventName: this.client.eventName, eventDate: this.client.eventDate,
-          subtotal: this.subtotal, tax: this.activeTaxAmount, total: this.activeTotal,
-          pdfBase64: b64, fileName: `${this.quote.number}_${this.client.company || '報價單'}.pdf`
+          quoteNumber: this.quote.number,
+          quoteDate: this.quote.date,
+          validUntil: this.quote.validUntil,
+          clientCompany: this.client.company,
+          clientContact: this.client.contact || '',
+          eventName: this.client.eventName || '',
+          eventDate: this.client.eventDate || '',
+          subtotal: this.subtotal,
+          tax: this.activeTaxAmount,
+          total: this.activeTotal,
+          vendorPdfBase64: vendorPdfB64,
+          clientPdfBase64: clientPdfB64,
+          vendorHtml: vendorHtml,
+          clientHtml: clientHtml,
+          stateJson: stateJson,
+          baseFileName: baseFileName
         })
 
-        // 用隱藏 iframe + form POST 繞過 CORS 重導向問題
-        const frameId = 'gs-archive-frame'
-        let iframe = document.getElementById(frameId)
-        if (!iframe) {
-          iframe = document.createElement('iframe')
-          iframe.id = frameId; iframe.name = frameId; iframe.style.display = 'none'
-          document.body.appendChild(iframe)
-        }
-        const form  = document.createElement('form')
-        form.method = 'POST'; form.action = this.settings.scriptUrl; form.target = frameId
-        const input = document.createElement('input')
-        input.type = 'hidden'; input.name = 'payload'; input.value = payload
-        form.appendChild(input); document.body.appendChild(form)
-        form.submit(); document.body.removeChild(form)
+        this.submitToScript(payload)
 
-        this.showToast('✅ 已送出至 Google Drive，約 10 秒後請確認！')
-      } catch { this.showToast('送出失敗，請重試', 'error') }
-      this.previewMode = was; this.archiving = false
+        this.showToast('✅ 已送出（廠商版+業主版 PDF/HTML+資料）至 Google Drive，約 20 秒後請確認')
+      } catch (err) {
+        console.error('Archive error:', err)
+        this.showToast('送出失敗：' + (err.message || '請重試'), 'error')
+      }
+      this.quoteMode = wasMode
+      this.previewMode = wasPreview
+      this.archiving = false
     }
   },
 
