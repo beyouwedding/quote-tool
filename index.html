@@ -78,10 +78,16 @@
         {{ archiving ? '歸檔中...' : '☁️ 歸檔到 Drive' }}
       </button>
 
-      <!-- 載入報價單 -->
+      <!-- 歷史報價（雲端） -->
+      <button @click="openHistory()"
+        class="px-4 py-1.5 bg-violet-600 text-white rounded text-sm hover:bg-violet-700 transition-colors font-medium">
+        📋 歷史報價
+      </button>
+
+      <!-- 本機載入（備用） -->
       <button @click="$refs.importFile.click()"
-        class="px-4 py-1.5 bg-amber-500 text-white rounded text-sm hover:bg-amber-600 transition-colors font-medium">
-        📂 載入報價單
+        class="px-3 py-1.5 border border-slate-300 rounded text-sm text-slate-500 hover:bg-slate-50 transition-colors">
+        📂 本機載入
       </button>
       <input ref="importFile" type="file" accept=".json" class="hidden" @change="loadFromFile">
     </div>
@@ -422,6 +428,58 @@
   </div>
 
   <!-- Toast Notification -->
+  <!-- ── 歷史報價面板 ── -->
+  <transition name="slide-panel">
+    <div v-if="showHistory" class="no-print fixed inset-0 z-40 flex justify-end">
+      <!-- 半透明背景 -->
+      <div class="absolute inset-0 bg-black/30" @click="showHistory = false"></div>
+      <!-- 面板本體 -->
+      <div class="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col">
+        <!-- 標題列 -->
+        <div class="flex items-center justify-between px-5 py-4 border-b border-slate-200 bg-slate-50">
+          <span class="font-semibold text-slate-700">📋 歷史報價單</span>
+          <button @click="showHistory = false" class="text-slate-400 hover:text-slate-600 text-lg leading-none">✕</button>
+        </div>
+
+        <!-- 載入中 -->
+        <div v-if="historyLoading" class="flex-1 flex items-center justify-center text-slate-400 text-sm">
+          載入中…
+        </div>
+
+        <!-- 無資料 -->
+        <div v-else-if="historyList.length === 0" class="flex-1 flex flex-col items-center justify-center text-slate-400 gap-2">
+          <span class="text-3xl">🗂</span>
+          <span class="text-sm">尚無歸檔記錄</span>
+        </div>
+
+        <!-- 列表 -->
+        <div v-else class="flex-1 overflow-y-auto divide-y divide-slate-100">
+          <button v-for="q in historyList" :key="q.fileId"
+            @click="loadFromCloud(q.fileId)"
+            class="w-full text-left px-5 py-4 hover:bg-violet-50 transition-colors group">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <div class="text-sm font-semibold text-slate-700 group-hover:text-violet-700 truncate">
+                  {{ q.clientCompany || '（未填客戶）' }}
+                </div>
+                <div class="text-xs text-slate-500 truncate mt-0.5">{{ q.eventName || '—' }}</div>
+              </div>
+              <div class="text-right flex-shrink-0">
+                <div class="text-xs font-mono text-slate-400">{{ q.quoteNumber }}</div>
+                <div class="text-xs text-slate-500 mt-0.5">NT$ {{ Number(q.total).toLocaleString() }}</div>
+              </div>
+            </div>
+            <div class="text-xs text-slate-400 mt-1">{{ q.quoteDate }}</div>
+          </button>
+        </div>
+
+        <div class="px-5 py-3 border-t border-slate-100 text-xs text-slate-400 text-center">
+          顯示最近 50 筆・點選即可載入編輯
+        </div>
+      </div>
+    </div>
+  </transition>
+
   <transition name="fade">
     <div v-if="toast.show" class="no-print fixed bottom-6 right-6 px-5 py-3 rounded-xl shadow-xl text-sm text-white font-medium z-50"
       :class="toast.type === 'success' ? 'bg-emerald-600' : 'bg-red-500'">
@@ -433,6 +491,10 @@
 <style>
 .fade-enter-active, .fade-leave-active { transition: opacity .3s, transform .3s; }
 .fade-enter-from, .fade-leave-to { opacity: 0; transform: translateY(8px); }
+.slide-panel-enter-active, .slide-panel-leave-active { transition: opacity .25s; }
+.slide-panel-enter-from, .slide-panel-leave-to { opacity: 0; }
+.slide-panel-enter-active .relative, .slide-panel-leave-active .relative { transition: transform .3s cubic-bezier(.4,0,.2,1); }
+.slide-panel-enter-from .relative, .slide-panel-leave-to .relative { transform: translateX(100%); }
 </style>
 
 <script>
@@ -447,6 +509,9 @@ createApp({
     return {
       previewMode: false,
       archiving: false,
+      showHistory: false,
+      historyLoading: false,
+      historyList: [],
       toast: { show: false, type: 'success', message: '' },
 
       settings: { scriptUrl: 'https://script.google.com/macros/s/AKfycbxpRQ6kxefGD1HRi7XnZSdo6RbxuNZzgN5ZFScoEv-6wf8MOMpBu5i8XoLsiXXTON-Q8Q/exec' },
@@ -844,6 +909,51 @@ ${quoteEl.outerHTML}
       this.quoteMode = wasMode
       this.previewMode = wasPreview
       this.archiving = false
+    },
+
+    async openHistory() {
+      if (!this.settings.scriptUrl) {
+        this.showToast('請先在設定中填入 Google Apps Script 網址', 'error')
+        return
+      }
+      this.showHistory = true
+      this.historyLoading = true
+      this.historyList = []
+      try {
+        const url = this.settings.scriptUrl + '?action=list'
+        const res = await fetch(url)
+        const data = await res.json()
+        if (!data.ok) throw new Error(data.error || '讀取失敗')
+        this.historyList = data.quotes || []
+      } catch (err) {
+        this.showToast('讀取歷史失敗：' + err.message, 'error')
+        this.showHistory = false
+      } finally {
+        this.historyLoading = false
+      }
+    },
+
+    async loadFromCloud(fileId) {
+      if (!fileId) return
+      try {
+        const url = this.settings.scriptUrl + '?action=load&fileId=' + encodeURIComponent(fileId)
+        const res = await fetch(url)
+        const data = await res.json()
+        if (!data.ok || !data.state) throw new Error(data.error || '載入失敗')
+        const s = data.state
+        if (!s.quote || !s.categories) throw new Error('檔案格式不符')
+        Object.assign(this.quote, s.quote)
+        Object.assign(this.client, s.client || {})
+        this.categories = s.categories
+        if (s.notes !== undefined) this.notes = s.notes
+        if (s.tax)      Object.assign(this.tax, s.tax)
+        if (s.discount) Object.assign(this.discount, s.discount)
+        this.previewMode = false
+        this.showHistory = false
+        this.showToast('✅ 報價單載入成功，可繼續編輯')
+      } catch (err) {
+        this.showToast('載入失敗：' + err.message, 'error')
+      }
     },
 
     loadFromFile(e) {

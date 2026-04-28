@@ -102,10 +102,50 @@ function doPost(e) {
   }
 }
 
-function doGet() {
+function doGet(e) {
+  const action = e && e.parameter && e.parameter.action
+  if (action === 'list')  return handleList()
+  if (action === 'load')  return handleLoad(e.parameter.fileId)
   return ContentService.createTextOutput(
     '✅ 報價單歸檔服務運作中\n根資料夾：' + ROOT_FOLDER_ID + '\n總覽 Sheet：' + SHEET_NAME
   )
+}
+
+function handleList() {
+  try {
+    const root = DriveApp.getFolderById(ROOT_FOLDER_ID)
+    const ss   = getOrCreateMasterSheet(root)
+    const data = ss.getActiveSheet().getDataRange().getValues()
+    const quotes = []
+    for (let i = data.length - 1; i >= 1; i--) {
+      const r = data[i]
+      const fileId = r[16]
+      if (!fileId) continue
+      quotes.push({
+        archivedAt:    r[0],
+        quoteNumber:   r[1],
+        clientCompany: r[2],
+        eventName:     r[4],
+        quoteDate:     r[6],
+        total:         r[10],
+        fileId:        fileId
+      })
+      if (quotes.length >= 50) break
+    }
+    return jsonOut({ ok: true, quotes })
+  } catch (err) {
+    return jsonOut({ ok: false, error: String(err) })
+  }
+}
+
+function handleLoad(fileId) {
+  try {
+    if (!fileId) return jsonOut({ ok: false, error: '缺少 fileId' })
+    const content = DriveApp.getFileById(fileId).getBlob().getDataAsString()
+    return jsonOut({ ok: true, state: JSON.parse(content) })
+  } catch (err) {
+    return jsonOut({ ok: false, error: String(err) })
+  }
 }
 
 // ─── helpers ─────────────────────────────────────────────────────
@@ -144,7 +184,7 @@ function initMasterSheet(ss) {
     '活動名稱', '活動日期', '報價日期', '有效期限',
     '小計(NT$)', '稅(NT$)', '總計(NT$)',
     '廠商版 PDF', '業主版 PDF', '廠商版 HTML', '業主版 HTML',
-    '原始資料 JSON', '客戶資料夾'
+    '原始資料 JSON', 'stateFileId', '客戶資料夾'
   ]
   sheet.appendRow(headers)
   sheet.setFrozenRows(1)
@@ -156,6 +196,11 @@ function initMasterSheet(ss) {
   sheet.setColumnWidth(2, 140)
   sheet.setColumnWidth(3, 160)
   for (let i = 12; i <= 17; i++) sheet.setColumnWidth(i, 110)
+}
+
+function extractFileId(url) {
+  const m = String(url || '').match(/\/d\/([a-zA-Z0-9_-]+)/)
+  return m ? m[1] : ''
 }
 
 function appendToMasterSheet(root, payload, out, clientFolder) {
@@ -179,6 +224,7 @@ function appendToMasterSheet(root, payload, out, clientFolder) {
     linkOrEmpty(out.vendorHtmlUrl, '開啟'),
     linkOrEmpty(out.clientHtmlUrl, '開啟'),
     linkOrEmpty(out.stateUrl, '下載'),
+    extractFileId(out.stateUrl),
     linkOrEmpty(clientFolder.getUrl(), '進入')
   ])
 }
