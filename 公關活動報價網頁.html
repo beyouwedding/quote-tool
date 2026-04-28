@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>活動報價系統</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: 'Segoe UI', 'Noto Sans TC', sans-serif; }
+
+  .quote-page {
+    width: 210mm;
+    min-height: 297mm;
+    margin: 0 auto;
+    background: white;
+    padding: 16mm 18mm;
+    box-shadow: 0 2px 20px rgba(0,0,0,0.12);
+  }
+
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
+  @media print {
+    .no-print { display: none !important; }
+    body { margin: 0; background: white; }
+    .quote-page { box-shadow: none; margin: 0; width: 100%; padding: 10mm 14mm; }
+  }
+</style>
+</head>
+<body class="bg-slate-100 min-h-screen">
+
+<div id="app">
+
+  <!-- ── Top Control Bar ── -->
+  <div class="no-print fixed top-0 left-0 right-0 bg-white border-b border-slate-200 z-50 px-6 py-3 flex items-center justify-between shadow-sm">
+    <div class="flex items-center gap-3">
+      <span class="text-base font-bold text-slate-700">📋 活動報價系統</span>
+      <span class="text-xs text-slate-400 font-mono bg-slate-100 px-2 py-0.5 rounded">{{ quote.number }}</span>
+    </div>
+    <div class="flex gap-2 items-center">
+      <button @click="previewMode = !previewMode"
+        class="px-3 py-1.5 border border-slate-300 rounded text-sm text-slate-600 hover:bg-slate-50 transition-colors">
+        {{ previewMode ? '✏️ 編輯模式' : '👁 預覽模式' }}
+      </button>
+
+      <!-- 廠商版 / 業主版 切換 -->
+      <div class="flex items-center gap-0.5 bg-slate-100 rounded-lg p-0.5">
+        <button @click="quoteMode = 'vendor'"
+          :class="quoteMode === 'vendor' ? 'bg-white shadow text-slate-700 font-semibold' : 'text-slate-400 hover:text-slate-600'"
+          class="px-3 py-1 rounded text-xs transition-all">廠商版</button>
+        <button @click="quoteMode = 'client'"
+          :class="quoteMode === 'client' ? 'bg-blue-600 text-white shadow font-semibold' : 'text-slate-400 hover:text-slate-600'"
+          class="px-3 py-1 rounded text-xs transition-all">業主版</button>
+      </div>
+
+      <button @click="resetQuote()"
+        class="px-3 py-1.5 border border-slate-300 rounded text-sm text-slate-500 hover:bg-slate-50 transition-colors">
+        🔄 新報價單
+      </button>
+
+      <!-- 廠商版 -->
+      <button @click="downloadPDF('vendor')"
+        class="px-4 py-1.5 bg-slate-600 text-white rounded text-sm hover:bg-slate-700 transition-colors font-medium">
+        📄 廠商版 PDF
+      </button>
+
+      <!-- 業主版 -->
+      <button @click="downloadPDF('client')"
+        class="px-4 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 transition-colors font-medium">
+        📄 業主版 PDF
+      </button>
+
+      <button @click="archiveToDrive()" :disabled="archiving"
+        class="px-4 py-1.5 bg-emerald-600 text-white rounded text-sm hover:bg-emerald-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+        {{ archiving ? '歸檔中...' : '☁️ 歸檔到 Drive' }}
+      </button>
+    </div>
+  </div>
+
+  <div class="pt-16 pb-12">
+
+    <!-- ── Settings Panel ── -->
+    <div v-if="!previewMode" class="no-print max-w-5xl mx-auto mb-5 bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+      <div class="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+        <span class="text-sm font-semibold text-slate-600">⚙️ 公司資料設定</span>
+        <span class="text-xs text-slate-400">資料自動儲存於瀏覽器</span>
+      </div>
+      <div class="p-5 grid grid-cols-3 gap-4">
+        <div>
+          <label class="text-xs font-medium text-slate-500 block mb-1">公司名稱</label>
+          <input v-model="company.name" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100" placeholder="○○公關股份有限公司">
+        </div>
+        <div>
+          <label class="text-xs font-medium text-slate-500 block mb-1">統一編號</label>
+          <input v-model="company.taxId" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400" placeholder="12345678">
+        </div>
+        <div>
+          <label class="text-xs font-medium text-slate-500 block mb-1">電話</label>
+          <input v-model="company.phone" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400" placeholder="02-1234-5678">
+        </div>
+        <div>
+          <label class="text-xs font-medium text-slate-500 block mb-1">地址</label>
+          <input v-model="company.address" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400" placeholder="台北市○○區○○路○○號">
+        </div>
+        <div>
+          <label class="text-xs font-medium text-slate-500 block mb-1">Email</label>
+          <input v-model="company.email" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400" placeholder="contact@company.com">
+        </div>
+        <div>
+          <label class="text-xs font-medium text-slate-500 block mb-1">Logo</label>
+          <div @click="$refs.logoInput.click()"
+            class="border-2 border-dashed border-slate-300 rounded-lg px-3 py-2 text-center cursor-pointer hover:border-blue-400 transition-colors h-[38px] flex items-center justify-center">
+            <img v-if="company.logo" :src="company.logo" class="h-6 object-contain">
+            <span v-else class="text-xs text-slate-400">點擊上傳 Logo</span>
+          </div>
+          <input type="file" ref="logoInput" class="hidden" accept="image/*" @change="uploadLogo">
+        </div>
+      </div>
+      <!-- Script URL -->
+      <div class="px-5 pb-4">
+        <label class="text-xs font-medium text-slate-500 block mb-1">☁️ Google Apps Script 網址（歸檔功能必填）</label>
+        <input v-model="settings.scriptUrl"
+          class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-emerald-400 font-mono"
+          placeholder="https://script.google.com/macros/s/AKfy.../exec">
+        <p class="text-xs text-slate-400 mt-1">完成 Apps Script 部署後貼入，參考 apps-script.gs 說明</p>
+      </div>
+
+    </div>
+
+    <!-- ── Quotation Document ── -->
+    <div id="quote-document" class="quote-page">
+
+      <!-- Document Header -->
+      <div class="flex justify-between items-start mb-7">
+        <div>
+          <img v-if="company.logo" :src="company.logo" class="h-10 object-contain mb-2">
+          <div class="text-base font-bold text-slate-800">{{ company.name || '公司名稱' }}</div>
+          <div class="text-xs text-slate-500 mt-0.5">{{ company.address }}</div>
+          <div class="text-xs text-slate-500">{{ company.phone }}{{ company.phone && company.email ? '　|　' : '' }}{{ company.email }}</div>
+          <div v-if="company.taxId" class="text-xs text-slate-500">統一編號：{{ company.taxId }}</div>
+        </div>
+        <div class="text-right">
+          <div>
+            <div class="text-2xl font-bold tracking-wide" style="color:#1a3560;">活動報價單</div>
+            <div v-if="quoteMode === 'vendor'" class="text-xs font-semibold mt-1 tracking-wide" style="color:#64748b;">
+              ▎廠商版 · Vendor Quotation
+            </div>
+          </div>
+          <div class="mt-2 text-xs text-slate-500 space-y-0.5">
+            <div class="flex justify-end gap-3">
+              <span class="text-slate-400">報價單編號</span>
+              <span class="font-mono font-medium text-slate-700">{{ quote.number }}</span>
+            </div>
+            <div class="flex justify-end gap-3">
+              <span class="text-slate-400">報價日期</span>
+              <span v-if="!previewMode">
+                <input v-model="quote.date" type="date" class="text-xs border-b border-slate-300 bg-transparent outline-none text-right">
+              </span>
+              <span v-else>{{ quote.date }}</span>
+            </div>
+            <div class="flex justify-end gap-3">
+              <span class="text-slate-400">有效期限</span>
+              <span v-if="!previewMode">
+                <input v-model="quote.validUntil" type="date" class="text-xs border-b border-slate-300 bg-transparent outline-none text-right">
+              </span>
+              <span v-else>{{ quote.validUntil }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Divider -->
+      <div style="height:2px;background:linear-gradient(to right,#1a3560,#3b6bc7,transparent);" class="mb-5"></div>
+
+      <!-- Client Info -->
+      <div class="bg-slate-50 rounded-lg p-4 mb-5 border border-slate-200">
+        <div class="flex items-center justify-between mb-3">
+          <div class="text-xs font-bold text-slate-400 uppercase tracking-widest">受報價方資訊</div>
+          <!-- 客戶記錄下拉 -->
+          <div v-if="!previewMode && clientHistory.length > 0" class="relative no-print client-dropdown-wrap">
+            <button @click="showClientDropdown = !showClientDropdown"
+              class="text-xs text-blue-600 hover:text-blue-800 border border-blue-200 rounded px-2 py-1 bg-white hover:bg-blue-50 transition-colors flex items-center gap-1">
+              📋 歷史客戶（{{ clientHistory.length }}）
+            </button>
+            <div v-if="showClientDropdown"
+              class="absolute right-0 top-8 bg-white border border-slate-200 rounded-lg shadow-lg z-50 w-72 overflow-hidden">
+              <div class="px-3 py-2 border-b border-slate-100">
+                <input v-model="clientFilter" class="w-full text-xs border border-slate-200 rounded px-2 py-1 outline-none" placeholder="搜尋客戶名稱...">
+              </div>
+              <div class="max-h-52 overflow-y-auto">
+                <div v-for="(c, i) in filteredClients" :key="i"
+                  class="flex items-center px-3 py-2.5 hover:bg-blue-50 border-b border-slate-50 last:border-0 group">
+                  <div @click="loadClient(c)" class="flex-1 cursor-pointer min-w-0">
+                    <div class="text-sm font-medium text-slate-700 truncate">{{ c.company }}</div>
+                    <div class="text-xs text-slate-400">{{ c.contact || '無聯絡人' }}</div>
+                  </div>
+                  <button @click.stop="deleteClientHistory(clientHistory.indexOf(c))"
+                    class="ml-2 text-slate-300 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity text-xs shrink-0">✕</button>
+                </div>
+                <div v-if="filteredClients.length === 0" class="px-3 py-3 text-xs text-slate-400 text-center">查無符合記錄</div>
+              </div>
+              <div class="border-t border-slate-100 px-3 py-2 bg-slate-50 flex justify-between items-center">
+                <span class="text-xs text-slate-400">點選自動帶入客戶資料</span>
+                <button @click="showClientDropdown = false" class="text-xs text-slate-500 hover:text-slate-700">關閉</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-x-10 gap-y-2">
+          <div v-for="field in clientFields" :key="field.key" class="flex items-baseline gap-2">
+            <span class="text-xs text-slate-400 shrink-0 w-14">{{ field.label }}</span>
+            <input v-if="!previewMode" v-model="client[field.key]"
+              class="flex-1 text-sm border-b border-slate-200 bg-transparent outline-none text-slate-700"
+              :placeholder="field.placeholder" :type="field.type || 'text'">
+            <span v-else class="text-sm font-medium"
+              :class="client[field.key] ? 'text-slate-700' : 'text-slate-400 italic'">
+              {{ client[field.key] || (field.key === 'eventDate' ? '待確認' : '—') }}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Items Table -->
+      <div class="mb-5">
+        <!-- Table Header -->
+        <div class="grid text-xs font-semibold text-white px-3 py-2.5 rounded-t-lg"
+          :style="{ background: '#1a3560', gridTemplateColumns: gridTemplate }">
+          <span>項目名稱</span>
+          <span>備註說明</span>
+          <span class="text-center">數量</span>
+          <span class="text-center">單位</span>
+          <span class="text-right">單價（NT$）</span>
+          <span v-if="showMarkupCols" class="text-right">百分比</span>
+          <span v-if="showMarkupCols" class="text-right">固定金額</span>
+          <span class="text-right">項目金額</span>
+          <span v-if="!previewMode"></span>
+        </div>
+
+        <template v-for="cat in categories" :key="cat.id">
+          <!-- Category Header（PDF 時若整個類別無單價則隱藏）-->
+          <div v-show="!previewMode || hasPricedItems(cat)"
+            class="flex items-center px-3 py-2 border-x border-slate-200 gap-2" style="background:#eef1f7;">
+            <label v-if="!previewMode" class="no-print flex items-center gap-1.5 cursor-pointer shrink-0">
+              <input type="checkbox" v-model="cat.enabled" class="w-3.5 h-3.5">
+            </label>
+            <span class="text-xs font-bold text-slate-600 tracking-wide flex-1">{{ cat.name }}</span>
+            <button v-if="!previewMode && cat.enabled" @click="addItem(cat)"
+              class="no-print text-xs text-blue-600 hover:text-blue-800 font-medium shrink-0">
+              + 新增項目
+            </button>
+          </div>
+
+          <!-- Items -->
+          <template v-if="cat.enabled">
+            <div v-for="(item, idx) in cat.items" :key="idx"
+              v-show="!previewMode || item.enabled"
+              class="grid items-center px-3 py-1.5 border-x border-b border-slate-200 text-sm"
+              :class="item.enabled ? 'bg-white' : 'bg-slate-50'"
+              :style="{ gridTemplateColumns: gridTemplate }">
+
+              <!-- Name -->
+              <div class="flex items-center gap-1.5 min-w-0">
+                <label v-if="!previewMode" class="no-print shrink-0 cursor-pointer">
+                  <input type="checkbox" v-model="item.enabled" class="w-3 h-3">
+                </label>
+                <input v-if="!previewMode && item.enabled" v-model="item.name"
+                  class="text-sm border-b border-slate-200 bg-transparent outline-none w-full text-slate-700 min-w-0 truncate">
+                <span v-else class="text-sm truncate" :class="item.enabled ? 'text-slate-700' : 'text-slate-300'">{{ item.name }}</span>
+              </div>
+
+              <!-- Note -->
+              <div class="min-w-0">
+                <input v-if="!previewMode && item.enabled" v-model="item.note"
+                  class="text-xs text-slate-400 border-b border-slate-100 bg-transparent outline-none w-full" placeholder="說明（選填）">
+                <span v-else class="text-xs truncate" :class="item.enabled ? 'text-slate-400' : 'text-slate-200'">{{ item.note }}</span>
+              </div>
+
+              <!-- Qty -->
+              <div class="text-center">
+                <input v-if="!previewMode && item.enabled" v-model.number="item.qty" type="number" min="0"
+                  class="text-sm text-center border-b border-slate-200 bg-transparent outline-none w-full">
+                <span v-else class="text-sm" :class="item.enabled ? '' : 'text-slate-300'">{{ item.qty }}</span>
+              </div>
+
+              <!-- Unit -->
+              <div class="text-center">
+                <input v-if="!previewMode && item.enabled" v-model="item.unit"
+                  class="text-xs text-center border-b border-slate-200 bg-transparent outline-none w-full text-slate-500">
+                <span v-else class="text-xs" :class="item.enabled ? 'text-slate-500' : 'text-slate-300'">{{ item.unit }}</span>
+              </div>
+
+              <!-- Unit Price（編輯模式：原始單價輸入；廠商 PDF：原始單價；業主 PDF：含加價後的實際單價） -->
+              <div class="text-right">
+                <input v-if="!previewMode && item.enabled" v-model.number="item.price" type="number" min="0"
+                  class="text-sm text-right border-b border-slate-200 bg-transparent outline-none w-full"
+                  placeholder="0">
+                <span v-else class="text-sm" :class="item.enabled ? 'text-slate-700' : 'text-slate-300'">
+                  {{ item.enabled ? fmt(quoteMode === 'client' ? effectiveUnitPrice(item) : item.price) : '-' }}
+                </span>
+              </div>
+
+              <!-- 百分比（編輯模式 + 廠商 PDF 顯示，業主 PDF 隱藏） -->
+              <div v-if="showMarkupCols" class="text-right">
+                <div v-if="!previewMode && item.enabled" class="flex items-center justify-end gap-0.5">
+                  <input v-model.number="item.markupPct" type="number" min="0" max="500"
+                    class="text-sm text-right border-b border-amber-200 bg-amber-50 outline-none w-full text-amber-700 px-1 py-0.5 rounded"
+                    placeholder="0">
+                  <span class="text-xs text-amber-600 shrink-0">%</span>
+                </div>
+                <span v-else class="text-xs" :class="item.enabled ? 'text-amber-600' : 'text-slate-300'">
+                  {{ item.enabled && item.markupPct ? item.markupPct + '%' : '—' }}
+                </span>
+              </div>
+
+              <!-- 固定金額（編輯模式 + 廠商 PDF 顯示，業主 PDF 隱藏） -->
+              <div v-if="showMarkupCols" class="text-right">
+                <input v-if="!previewMode && item.enabled" v-model.number="item.markupAmt" type="number" min="0" placeholder="0"
+                  class="text-sm text-right border-b border-amber-200 bg-amber-50 outline-none w-full text-amber-700 px-1 py-0.5 rounded">
+                <span v-else class="text-xs" :class="item.enabled ? 'text-amber-600' : 'text-slate-300'">
+                  {{ item.enabled && item.markupAmt ? fmt(item.markupAmt) : '—' }}
+                </span>
+              </div>
+
+              <!-- 項目金額（含加價） -->
+              <div class="text-right text-sm font-semibold" :class="item.enabled ? 'text-slate-800' : 'text-slate-300'">
+                {{ item.enabled ? fmt(itemTotal(item)) : '-' }}
+              </div>
+
+              <!-- Remove（編輯模式才有） -->
+              <div v-if="!previewMode" class="text-center">
+                <button @click="removeItem(cat, idx)"
+                  class="no-print text-slate-300 hover:text-red-400 transition-colors text-xs leading-none">✕</button>
+              </div>
+            </div>
+
+            <!-- Category Subtotal -->
+            <div v-show="!previewMode || hasPricedItems(cat)"
+              class="flex justify-end px-3 py-1.5 border-x border-b border-slate-200 bg-slate-50">
+              <span class="text-xs text-slate-400 mr-2">{{ cat.name }} 小計</span>
+              <span class="text-xs font-semibold text-slate-600">NT$ {{ fmt(categoryTotal(cat)) }}</span>
+            </div>
+          </template>
+        </template>
+
+        <!-- Table Footer Row -->
+        <div class="rounded-b-lg border-x border-b border-slate-200 h-1" style="background:#1a3560;opacity:0.15;"></div>
+      </div>
+
+      <!-- Summary Block -->
+      <div class="flex justify-end mb-6">
+        <div class="w-72 border border-slate-200 rounded-lg overflow-hidden">
+          <!-- 小計 -->
+          <div class="flex justify-between px-4 py-2 text-sm border-b border-slate-100">
+            <span class="text-slate-500">報價小計</span>
+            <span class="font-medium">NT$ {{ fmt(activeSubtotal) }}</span>
+          </div>
+
+          <!-- Discount -->
+          <div v-if="!previewMode || discount.enabled" class="flex justify-between px-4 py-2 text-sm border-b border-slate-100 items-center gap-2">
+            <div class="flex items-center gap-2">
+              <input v-if="!previewMode" type="checkbox" v-model="discount.enabled" class="no-print w-3 h-3">
+              <span class="text-slate-500">折扣</span>
+            </div>
+            <div class="flex items-center gap-1">
+              <span v-if="discount.enabled" class="text-red-500 text-sm">- NT$</span>
+              <input v-if="!previewMode && discount.enabled" v-model.number="discount.amount" type="number" min="0"
+                class="w-24 text-right text-sm border-b border-slate-200 bg-transparent outline-none text-red-500" placeholder="0">
+              <span v-else-if="discount.enabled" class="text-red-500 font-medium">{{ fmt(discount.amount) }}</span>
+              <span v-else class="text-slate-300 text-sm">（未設定）</span>
+            </div>
+          </div>
+
+          <!-- Tax -->
+          <div class="flex justify-between px-4 py-2 text-sm border-b border-slate-100 items-center">
+            <div class="flex items-center gap-2">
+              <input v-if="!previewMode" type="checkbox" v-model="tax.enabled" class="no-print w-3 h-3">
+              <span class="text-slate-500">營業稅（5%）</span>
+            </div>
+            <span :class="tax.enabled ? 'text-slate-700' : 'text-slate-400'">
+              {{ tax.enabled ? 'NT$ ' + fmt(activeTaxAmount) : '未稅' }}
+            </span>
+          </div>
+
+          <!-- Total -->
+          <div class="flex justify-between px-4 py-3 items-center" style="background:#1a3560;">
+            <span class="text-sm font-bold text-white">總計金額</span>
+            <span class="text-lg font-bold text-white">NT$ {{ fmt(activeTotal) }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Notes -->
+      <div class="border-t border-slate-200 pt-4 mb-4">
+        <div class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">備註事項</div>
+        <textarea v-if="!previewMode" v-model="notes" rows="3"
+          class="w-full text-xs text-slate-600 border border-slate-200 rounded-lg p-3 outline-none resize-none focus:border-blue-300"
+          placeholder="付款條件、特殊說明..."></textarea>
+        <p v-else class="text-xs text-slate-600 whitespace-pre-wrap leading-relaxed">{{ notes }}</p>
+      </div>
+
+      <!-- Terms -->
+      <div class="border-t border-slate-100 pt-3">
+        <p class="text-xs text-slate-400 whitespace-pre-wrap leading-relaxed">{{ terms }}</p>
+      </div>
+
+      <!-- Footer -->
+      <div class="mt-8 pt-4 border-t border-slate-200 flex justify-between text-xs text-slate-400">
+        <span>{{ company.name }}</span>
+        <span>{{ quote.number }}</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <transition name="fade">
+    <div v-if="toast.show" class="no-print fixed bottom-6 right-6 px-5 py-3 rounded-xl shadow-xl text-sm text-white font-medium z-50"
+      :class="toast.type === 'success' ? 'bg-emerald-600' : 'bg-red-500'">
+      {{ toast.message }}
+    </div>
+  </transition>
+</div>
+
+<style>
+.fade-enter-active, .fade-leave-active { transition: opacity .3s, transform .3s; }
+.fade-enter-from, .fade-leave-to { opacity: 0; transform: translateY(8px); }
+</style>
+
+<script>
+const { createApp } = Vue
+
+createApp({
+  data() {
+    const today = new Date()
+    const valid = new Date(today)
+    valid.setDate(valid.getDate() + 30)
+
+    return {
+      previewMode: false,
+      archiving: false,
+      toast: { show: false, type: 'success', message: '' },
+
+      settings: { scriptUrl: 'https://script.google.com/macros/s/AKfycbzmR55xTp1Zl8d2MXg7ppSdYHNeHGicRGFGXV5S7m_NFtkQBgnqT123TtWT_J72nD5k/exec' },
+
+      quoteMode: 'vendor',   // 'vendor' 廠商版 PDF | 'client' 業主版 PDF（差別僅在 PDF 顯示欄位）
+
+      company: {
+        name: '彼侑有限公司',
+        taxId: '90231761',
+        address: '桃園市桃園區中華路28號4樓',
+        phone: '03-2805299',
+        email: 'beyouwedding@gmail.com',
+        logo: ''
+      },
+
+      quote: {
+        number: this.genNumber(),
+        date: today.toISOString().split('T')[0],
+        validUntil: valid.toISOString().split('T')[0]
+      },
+
+      client: { company: '', contact: '', eventName: '', eventDate: '' },
+
+      clientFields: [
+        { key: 'company',   label: '客戶名稱', placeholder: '○○股份有限公司' },
+        { key: 'contact',   label: '聯絡人',   placeholder: '王小明' },
+        { key: 'eventName', label: '活動名稱', placeholder: '2025 年度尾牙' },
+        { key: 'eventDate', label: '活動日期', placeholder: '可空白（待確認）', type: 'date' }
+      ],
+
+      clientHistory: [],
+      showClientDropdown: false,
+      clientFilter: '',
+
+      tax:      { enabled: true },
+      discount: { enabled: false, amount: 0 },
+
+      notes: '付款條件：簽約後支付 50%，活動結束後 7 日內付清尾款 50%\n報價有效期限：30 天\n如有特殊需求或變更，報價金額將另行調整',
+      terms:  '本報價單所列金額均未含稅，如需含稅發票請另行確認。\n以上報價如有任何疑問，歡迎與我們聯繫。',
+
+      categories: [
+        {
+          id: 'planning', name: '統籌企劃', enabled: true,
+          items: [
+            { enabled: true,  name: '活動統籌企劃費', note: '', qty: 1, unit: '式', price: 0, markupPct: 0, markupAmt: 0 },
+            { enabled: true,  name: '前期溝通協調費', note: '', qty: 1, unit: '式', price: 0, markupPct: 0, markupAmt: 0 },
+            { enabled: false, name: '場勘費',         note: '', qty: 1, unit: '次', price: 0, markupPct: 0, markupAmt: 0 },
+          ]
+        },
+        {
+          id: 'visual', name: '視覺設計', enabled: true,
+          items: [
+            { enabled: true,  name: '主視覺（KV）設計',            note: '', qty: 1, unit: '式', price: 0, markupPct: 0, markupAmt: 0 },
+            { enabled: false, name: '背板 / 活動相關輸出設計',      note: '', qty: 1, unit: '式', price: 0, markupPct: 0, markupAmt: 0 },
+            { enabled: false, name: '現場指示物設計（指標、桌卡）', note: '', qty: 1, unit: '式', price: 0, markupPct: 0, markupAmt: 0 },
+            { enabled: false, name: '活動手冊 / DM 設計',          note: '', qty: 1, unit: '份', price: 0, markupPct: 0, markupAmt: 0 },
+          ]
+        },
+        {
+          id: 'venue', name: '場地佈置', enabled: true,
+          items: [
+            { enabled: true,  name: '主舞台背板搭設',        note: '', qty: 1, unit: '式', price: 0, markupPct: 0, markupAmt: 0 },
+            { enabled: false, name: '報到區佈置',            note: '', qty: 1, unit: '式', price: 0, markupPct: 0, markupAmt: 0 },
+            { enabled: false, name: '拍照區搭設',            note: '', qty: 1, unit: '式', price: 0, markupPct: 0, markupAmt: 0 },
+            { enabled: false, name: '桌面佈置（桌卡/名牌）', note: '', qty: 1, unit: '式', price: 0, markupPct: 0, markupAmt: 0 },
+          ]
+        },
+        {
+          id: 'av', name: '音響與燈光', enabled: true,
+          items: [
+            { enabled: true,  name: '基本音響設備（喇叭、麥克風）', note: '飯店原有設備如不符需求另計', qty: 1, unit: '式',   price: 0, markupPct: 0, markupAmt: 0 },
+            { enabled: true,  name: '舞台照明設備',                 note: '',                           qty: 1, unit: '式',   price: 0, markupPct: 0, markupAmt: 0 },
+            { enabled: false, name: '技術人員操作費',               note: '',                           qty: 1, unit: '人/天', price: 0, markupPct: 0, markupAmt: 0 },
+            { enabled: false, name: '演出加強音響設備',             note: '有藝人表演時建議追加',         qty: 1, unit: '式',   price: 0, markupPct: 0, markupAmt: 0 },
+          ]
+        },
+        {
+          id: 'print', name: '輸出製作物', enabled: false,
+          items: [
+            { enabled: true,  name: '背板輸出',      note: '', qty: 1, unit: '式', price: 0, markupPct: 0, markupAmt: 0 },
+            { enabled: false, name: '指示牌',        note: '', qty: 1, unit: '個', price: 0, markupPct: 0, markupAmt: 0 },
+            { enabled: false, name: '識別證',        note: '', qty: 1, unit: '個', price: 0, markupPct: 0, markupAmt: 0 },
+            { enabled: false, name: '活動手冊 / DM', note: '', qty: 1, unit: '份', price: 0, markupPct: 0, markupAmt: 0 },
+          ]
+        },
+        {
+          id: 'staff', name: '人力配置', enabled: true,
+          items: [
+            { enabled: true,  name: '現場執行人員', note: '', qty: 2, unit: '人/天', price: 0, markupPct: 0, markupAmt: 0 },
+            { enabled: false, name: '報到人員',     note: '', qty: 1, unit: '人/天', price: 0, markupPct: 0, markupAmt: 0 },
+            { enabled: false, name: '攝影師',       note: '', qty: 1, unit: '人/天', price: 0, markupPct: 0, markupAmt: 0 },
+            { enabled: false, name: '錄影師',       note: '', qty: 1, unit: '人/天', price: 0, markupPct: 0, markupAmt: 0 },
+            { enabled: false, name: '主持人',       note: '', qty: 1, unit: '人',    price: 0, markupPct: 0, markupAmt: 0 },
+          ]
+        },
+        {
+          id: 'logistics', name: '進撤場與運輸', enabled: false,
+          items: [
+            { enabled: true, name: '物料進場費', note: '', qty: 1, unit: '式', price: 0, markupPct: 0, markupAmt: 0 },
+            { enabled: true, name: '場地佈置費', note: '', qty: 1, unit: '式', price: 0, markupPct: 0, markupAmt: 0 },
+            { enabled: true, name: '撤場清運費', note: '', qty: 1, unit: '式', price: 0, markupPct: 0, markupAmt: 0 },
+          ]
+        },
+        {
+          id: 'misc', name: '雜支', enabled: false,
+          items: [
+            { enabled: true, name: '雜支費用', note: '', qty: 1, unit: '式', price: 0, markupPct: 0, markupAmt: 0 },
+          ]
+        }
+      ]
+    }
+  },
+
+  computed: {
+    // ── 報價小計（含每項加價）
+    subtotal() {
+      return this.categories.reduce((sum, cat) => sum + this.categoryTotal(cat), 0)
+    },
+
+    // 為了相容 archiveToDrive：activeSubtotal 等同 subtotal
+    activeSubtotal() { return this.subtotal },
+
+    // ── 稅額（5%）
+    activeTaxAmount() {
+      if (!this.tax.enabled) return 0
+      const base = this.subtotal - (this.discount.enabled ? this.discount.amount : 0)
+      return Math.round(base * 0.05)
+    },
+
+    // ── 總計
+    activeTotal() {
+      let t = this.subtotal
+      if (this.discount.enabled) t -= this.discount.amount
+      if (this.tax.enabled) t += this.activeTaxAmount
+      return t
+    },
+
+    // ── 表格 grid 樣式：依模式切換欄位數
+    //   編輯：項目 / 備註 / 數量 / 單位 / 單價 / 百分比 / 固定 / 項目金額 / X (9 欄)
+    //   廠商版 PDF：項目 / 備註 / 數量 / 單位 / 單價 / 百分比 / 固定 / 項目金額 (8 欄)
+    //   業主版 PDF：項目 / 備註 / 數量 / 單位 / 單價 / 項目金額 (6 欄)
+    gridTemplate() {
+      if (!this.previewMode) return '1.7fr 1.2fr 44px 44px 76px 60px 76px 80px 22px'
+      if (this.quoteMode === 'vendor') return '1.9fr 1.3fr 46px 46px 80px 60px 80px 84px'
+      return '2.2fr 1.6fr 52px 52px 100px 100px'
+    },
+
+    // 是否顯示「百分比 / 固定金額」欄位（編輯模式 + 廠商版 PDF）
+    showMarkupCols() {
+      return !this.previewMode || this.quoteMode === 'vendor'
+    },
+
+    filteredClients() {
+      const q = this.clientFilter.toLowerCase()
+      return this.clientHistory.filter(c =>
+        c.company.toLowerCase().includes(q) || (c.contact || '').toLowerCase().includes(q)
+      )
+    }
+  },
+
+  methods: {
+    fmt(n) { return (n || 0).toLocaleString('zh-TW') },
+
+    // 單項金額：數量 × 單價 × (1 + 百分比%) + 固定金額
+    itemTotal(item) {
+      if (!item.enabled) return 0
+      const qty   = Number(item.qty)        || 0
+      const price = Number(item.price)      || 0
+      const pct   = Number(item.markupPct)  || 0
+      const amt   = Number(item.markupAmt)  || 0
+      return Math.round(qty * price * (1 + pct / 100) + amt)
+    },
+
+    // 含加價後的實際單價（業主版顯示用）
+    effectiveUnitPrice(item) {
+      const qty = Number(item.qty) || 0
+      if (qty <= 0) return 0
+      return Math.round(this.itemTotal(item) / qty)
+    },
+
+    // 類別小計
+    categoryTotal(cat) {
+      if (!cat.enabled) return 0
+      return cat.items.reduce((s, i) => s + this.itemTotal(i), 0)
+    },
+
+    // 類別是否有任一啟用中的項目（用來決定 PDF 是否顯示此類別）
+    hasPricedItems(cat) {
+      return cat.enabled && cat.items.some(i => i.enabled)
+    },
+
+    addItem(cat) {
+      cat.items.push({ enabled: true, name: '新項目', note: '', qty: 1, unit: '式', price: 0, markupPct: 0, markupAmt: 0 })
+
+    },
+
+    removeItem(cat, idx) { cat.items.splice(idx, 1) },
+
+    uploadLogo(e) {
+      const f = e.target.files[0]; if (!f) return
+      const r = new FileReader()
+      r.onload = ev => { this.company.logo = ev.target.result }
+      r.readAsDataURL(f)
+    },
+
+    genNumber() {
+      const d = new Date(), p = n => String(n).padStart(2, '0')
+      return `QT-${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}-${String(Math.floor(Math.random()*900)+100)}`
+    },
+
+    resetQuote() {
+      if (!confirm('產生新報價單？現有資料將被清除（公司設定保留）')) return
+      const t = new Date(), v = new Date(t); v.setDate(v.getDate()+30)
+      this.quote = { number: this.genNumber(), date: t.toISOString().split('T')[0], validUntil: v.toISOString().split('T')[0] }
+      this.client = { company: '', contact: '', eventName: '', eventDate: '' }
+      this.discount = { enabled: false, amount: 0 }
+      this.categories.forEach(cat => cat.items.forEach(i => { i.price = 0; i.qty = 1; i.note = ''; i.markupPct = 0; i.markupAmt = 0 }))
+    },
+
+    showToast(msg, type = 'success') {
+      this.toast = { show: true, type, message: msg }
+      setTimeout(() => { this.toast.show = false }, 4000)
+    },
+
+    // ── 下載 PDF（廠商版 / 業主版）
+    async downloadPDF(mode = 'vendor') {
+      this.saveClientToHistory()
+      const wasMode    = this.quoteMode
+      const wasPreview = this.previewMode
+      this.quoteMode   = mode
+      this.previewMode = true
+      await this.$nextTick()
+      const suffix = mode === 'client' ? '業主版' : '廠商版'
+      await html2pdf().set({
+        margin: 0,
+        filename: `${this.quote.number}_${this.client.company || '報價單'}_${suffix}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, logging: false },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+      }).from(document.getElementById('quote-document')).save()
+      this.quoteMode   = wasMode
+      this.previewMode = wasPreview
+    },
+
+    saveSettings() {
+      localStorage.setItem('quoteAppSettings', JSON.stringify({
+        company:  this.company,
+        settings: this.settings,
+        notes:    this.notes
+      }))
+    },
+
+    saveClientToHistory() {
+      if (!this.client.company) return
+      const idx = this.clientHistory.findIndex(c => c.company === this.client.company)
+      if (idx >= 0) {
+        this.clientHistory[idx].contact = this.client.contact
+      } else {
+        this.clientHistory.unshift({ company: this.client.company, contact: this.client.contact })
+      }
+      localStorage.setItem('quoteClientHistory', JSON.stringify(this.clientHistory))
+    },
+
+    loadClient(c) {
+      this.client.company = c.company
+      this.client.contact = c.contact
+      this.showClientDropdown = false
+      this.clientFilter = ''
+    },
+
+    deleteClientHistory(i) {
+      this.clientHistory.splice(i, 1)
+      localStorage.setItem('quoteClientHistory', JSON.stringify(this.clientHistory))
+    },
+
+    async archiveToDrive() {
+      if (!this.settings.scriptUrl) { this.showToast('請先填入 Google Apps Script 網址', 'error'); return }
+      this.saveClientToHistory()
+      this.archiving = true
+      const was = this.previewMode; this.previewMode = true; await this.$nextTick()
+      try {
+        const blob = await html2pdf().set({
+          margin: 0, image: { type: 'jpeg', quality: 0.92 },
+          html2canvas: { scale: 2, useCORS: true, logging: false },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+          pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+        }).from(document.getElementById('quote-document')).outputPdf('blob')
+
+        const b64 = await new Promise(res => {
+          const r = new FileReader(); r.onload = e => res(e.target.result.split(',')[1]); r.readAsDataURL(blob)
+        })
+
+        const payload = JSON.stringify({
+          quoteNumber: this.quote.number, date: this.quote.date,
+          clientCompany: this.client.company, clientContact: this.client.contact,
+          eventName: this.client.eventName, eventDate: this.client.eventDate,
+          subtotal: this.subtotal, tax: this.activeTaxAmount, total: this.activeTotal,
+          pdfBase64: b64, fileName: `${this.quote.number}_${this.client.company || '報價單'}.pdf`
+        })
+
+        // 用隱藏 iframe + form POST 繞過 CORS 重導向問題
+        const frameId = 'gs-archive-frame'
+        let iframe = document.getElementById(frameId)
+        if (!iframe) {
+          iframe = document.createElement('iframe')
+          iframe.id = frameId; iframe.name = frameId; iframe.style.display = 'none'
+          document.body.appendChild(iframe)
+        }
+        const form  = document.createElement('form')
+        form.method = 'POST'; form.action = this.settings.scriptUrl; form.target = frameId
+        const input = document.createElement('input')
+        input.type = 'hidden'; input.name = 'payload'; input.value = payload
+        form.appendChild(input); document.body.appendChild(form)
+        form.submit(); document.body.removeChild(form)
+
+        this.showToast('✅ 已送出至 Google Drive，約 10 秒後請確認！')
+      } catch { this.showToast('送出失敗，請重試', 'error') }
+      this.previewMode = was; this.archiving = false
+    }
+  },
+
+  mounted() {
+    const saved = localStorage.getItem('quoteAppSettings')
+    if (saved) {
+      try {
+        const s = JSON.parse(saved)
+        if (s.company)  Object.assign(this.company, s.company)
+        if (s.settings) Object.assign(this.settings, s.settings)
+        if (s.notes)    this.notes = s.notes
+      } catch {}
+    }
+    try {
+      const h = localStorage.getItem('quoteClientHistory')
+      if (h) this.clientHistory = JSON.parse(h)
+    } catch {}
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.client-dropdown-wrap')) this.showClientDropdown = false
+    })
+  },
+
+  watch: {
+    company:              { deep: true, handler() { this.saveSettings() } },
+    'settings.scriptUrl'()              { this.saveSettings() },
+    notes()                             { this.saveSettings() },
+  }
+}).mount('#app')
+</script>
+</body>
+</html>
