@@ -1,0 +1,17 @@
+# macOS
+.DS_Store
+
+# 已產生的報價單 PDF（不放進版本庫）
+*.pdf
+
+# 中文檔名舊版（保留本機，不上傳）
+公關活動報價網頁.html
+
+# 編輯器暫存
+.vscode/
+.idea/
+*.swp
+
+# Node（如果之後加套件）
+node_modules/
+.vercel
