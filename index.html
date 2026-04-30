@@ -245,13 +245,13 @@
         <div class="grid text-xs font-semibold text-white px-3 py-2.5 rounded-t-lg"
           :style="{ background: '#1a3560', gridTemplateColumns: gridTemplate }">
           <span>項目名稱</span>
-          <span>備註說明</span>
           <span class="text-center">數量</span>
           <span class="text-center">單位</span>
           <span class="text-right">單價（NT$）</span>
           <span v-if="showMarkupCols" class="text-right">百分比</span>
           <span v-if="showMarkupCols" class="text-right">固定金額</span>
           <span class="text-right">項目金額</span>
+          <span>備註說明</span>
           <span v-if="!previewMode"></span>
         </div>
 
@@ -273,12 +273,12 @@
           <template v-if="cat.enabled">
             <div v-for="(item, idx) in cat.items" :key="idx"
               v-show="!previewMode || item.enabled"
-              class="q-row grid items-center px-3 py-1.5 border-x border-b border-slate-200 text-sm"
+              class="q-row grid items-start px-3 py-1.5 border-x border-b border-slate-200 text-sm"
               :class="item.enabled ? 'bg-white' : 'bg-slate-50'"
               :style="{ gridTemplateColumns: gridTemplate }">
 
               <!-- Name -->
-              <div class="flex items-center gap-1.5 min-w-0">
+              <div class="flex items-center gap-1.5 min-w-0 pt-0.5">
                 <label v-if="!previewMode" class="no-print shrink-0 cursor-pointer">
                   <input type="checkbox" v-model="item.enabled" class="w-3 h-3">
                 </label>
@@ -287,29 +287,22 @@
                 <span v-else class="text-sm truncate" :class="item.enabled ? 'text-slate-700' : 'text-slate-300'">{{ item.name }}</span>
               </div>
 
-              <!-- Note -->
-              <div class="min-w-0">
-                <input v-if="!previewMode && item.enabled" v-model="item.note"
-                  class="text-xs text-slate-400 border-b border-slate-100 bg-transparent outline-none w-full" placeholder="說明（選填）">
-                <span v-else class="text-xs truncate" :class="item.enabled ? 'text-slate-400' : 'text-slate-200'">{{ item.note }}</span>
-              </div>
-
               <!-- Qty -->
-              <div class="text-center">
+              <div class="text-center pt-0.5">
                 <input v-if="!previewMode && item.enabled" v-model.number="item.qty" type="number" min="0"
                   class="text-sm text-center border-b border-slate-200 bg-transparent outline-none w-full">
                 <span v-else class="text-sm" :class="item.enabled ? '' : 'text-slate-300'">{{ item.qty }}</span>
               </div>
 
               <!-- Unit -->
-              <div class="text-center">
+              <div class="text-center pt-0.5">
                 <input v-if="!previewMode && item.enabled" v-model="item.unit"
                   class="text-xs text-center border-b border-slate-200 bg-transparent outline-none w-full text-slate-500">
                 <span v-else class="text-xs" :class="item.enabled ? 'text-slate-500' : 'text-slate-300'">{{ item.unit }}</span>
               </div>
 
               <!-- Unit Price（編輯模式：原始單價輸入；廠商 PDF：原始單價；業主 PDF：含加價後的實際單價） -->
-              <div class="text-right">
+              <div class="text-right pt-0.5">
                 <input v-if="!previewMode && item.enabled" v-model.number="item.price" type="number" min="0"
                   class="text-sm text-right border-b border-slate-200 bg-transparent outline-none w-full"
                   placeholder="0">
@@ -319,7 +312,7 @@
               </div>
 
               <!-- 百分比（編輯模式 + 廠商 PDF 顯示，業主 PDF 隱藏） -->
-              <div v-if="showMarkupCols" class="text-right">
+              <div v-if="showMarkupCols" class="text-right pt-0.5">
                 <div v-if="!previewMode && item.enabled" class="flex items-center justify-end gap-0.5">
                   <input v-model.number="item.markupPct" type="number" min="0" max="500"
                     class="text-sm text-right border-b border-amber-200 bg-amber-50 outline-none w-full text-amber-700 px-1 py-0.5 rounded"
@@ -332,7 +325,7 @@
               </div>
 
               <!-- 固定金額（編輯模式 + 廠商 PDF 顯示，業主 PDF 隱藏） -->
-              <div v-if="showMarkupCols" class="text-right">
+              <div v-if="showMarkupCols" class="text-right pt-0.5">
                 <input v-if="!previewMode && item.enabled" v-model.number="item.markupAmt" type="number" min="0" placeholder="0"
                   class="text-sm text-right border-b border-amber-200 bg-amber-50 outline-none w-full text-amber-700 px-1 py-0.5 rounded">
                 <span v-else class="text-xs" :class="item.enabled ? 'text-amber-600' : 'text-slate-300'">
@@ -341,12 +334,21 @@
               </div>
 
               <!-- 項目金額（含加價） -->
-              <div class="text-right text-sm font-semibold" :class="item.enabled ? 'text-slate-800' : 'text-slate-300'">
+              <div class="text-right text-sm font-semibold pt-0.5" :class="item.enabled ? 'text-slate-800' : 'text-slate-300'">
                 {{ item.enabled ? fmt(itemTotal(item)) : '-' }}
               </div>
 
+              <!-- Note（項目金額後，支援換行） -->
+              <div class="min-w-0">
+                <textarea v-if="!previewMode && item.enabled" v-model="item.note" rows="1"
+                  class="text-xs text-slate-400 border border-slate-100 rounded bg-transparent outline-none w-full resize-none leading-relaxed px-1 py-0.5 focus:border-slate-300"
+                  placeholder="說明（選填，Enter 換行）"
+                  @input="$event.target.style.height='auto'; $event.target.style.height=$event.target.scrollHeight+'px'"></textarea>
+                <span v-else class="text-xs whitespace-pre-wrap leading-relaxed" :class="item.enabled ? 'text-slate-400' : 'text-slate-200'">{{ item.note }}</span>
+              </div>
+
               <!-- Remove（編輯模式才有） -->
-              <div v-if="!previewMode" class="text-center">
+              <div v-if="!previewMode" class="text-center pt-0.5">
                 <button @click="removeItem(cat, idx)"
                   class="no-print text-slate-300 hover:text-red-400 transition-colors text-xs leading-none">✕</button>
               </div>
@@ -657,9 +659,9 @@ createApp({
     //   廠商版 PDF：項目 / 備註 / 數量 / 單位 / 單價 / 百分比 / 固定 / 項目金額 (8 欄)
     //   業主版 PDF：項目 / 備註 / 數量 / 單位 / 單價 / 項目金額 (6 欄)
     gridTemplate() {
-      if (!this.previewMode) return '1.7fr 1.2fr 44px 44px 76px 60px 76px 80px 22px'
-      if (this.quoteMode === 'vendor') return '1.9fr 1.3fr 46px 46px 80px 60px 80px 84px'
-      return '2.2fr 1.6fr 52px 52px 100px 100px'
+      if (!this.previewMode) return '1.7fr 44px 44px 76px 60px 76px 80px 1.2fr 22px'
+      if (this.quoteMode === 'vendor') return '1.9fr 46px 46px 80px 60px 80px 84px 1.3fr'
+      return '2.2fr 52px 52px 100px 100px 1.6fr'
     },
 
     // 是否顯示「百分比 / 固定金額」欄位（編輯模式 + 廠商版 PDF）
