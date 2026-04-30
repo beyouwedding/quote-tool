@@ -251,7 +251,7 @@
           <span v-if="showMarkupCols" class="text-right">百分比</span>
           <span v-if="showMarkupCols" class="text-right">固定金額</span>
           <span class="text-right">項目金額</span>
-          <span>備註說明</span>
+          <span class="pl-4">備註說明</span>
           <span v-if="!previewMode"></span>
         </div>
 
@@ -339,7 +339,7 @@
               </div>
 
               <!-- Note（項目金額後，支援換行） -->
-              <div class="min-w-0">
+              <div class="min-w-0 pl-4">
                 <textarea v-if="!previewMode && item.enabled" v-model="item.note" rows="1"
                   class="text-xs text-slate-400 border border-slate-100 rounded bg-transparent outline-none w-full resize-none leading-relaxed px-1 py-0.5 focus:border-slate-300"
                   placeholder="說明（選填，Enter 換行）"
