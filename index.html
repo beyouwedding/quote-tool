@@ -268,13 +268,14 @@
             class="q-row flex items-center px-3 py-2 border-x border-slate-200 gap-2"
             :class="{ 'is-dragging': dragCatIdx === catIdx, 'drag-over-top': dragOverCatIdx === catIdx && dragCatIdx !== catIdx }"
             style="background:#eef1f7;"
-            :draggable="!previewMode"
-            @dragstart.self="catDragStart(catIdx, $event)"
             @dragover.prevent="catDragOver(catIdx)"
             @drop.prevent="catDrop(catIdx)"
             @dragend="catDragEnd">
-            <!-- 拖曳把手 -->
-            <span v-if="!previewMode" class="no-print drag-handle text-slate-300 text-base leading-none select-none" @mousedown.stop>⠿</span>
+            <!-- 拖曳把手：只有抓這裡才能拖動類別 -->
+            <span v-if="!previewMode"
+              class="no-print drag-handle text-slate-400 text-base leading-none select-none"
+              :draggable="true"
+              @dragstart.stop="catDragStart(catIdx, $event)">⠿</span>
             <label v-if="!previewMode" class="no-print flex items-center gap-1.5 cursor-pointer shrink-0">
               <input type="checkbox" v-model="cat.enabled" class="w-3.5 h-3.5">
             </label>
@@ -297,15 +298,16 @@
               class="q-row grid items-start px-3 py-1.5 border-x border-b border-slate-200 text-sm"
               :class="[item.enabled ? 'bg-white' : 'bg-slate-50', { 'is-dragging': dragItemInfo && dragItemInfo.catIdx===catIdx && dragItemInfo.idx===idx, 'drag-over-top': dragOverItemInfo && dragOverItemInfo.catIdx===catIdx && dragOverItemInfo.idx===idx }]"
               :style="{ gridTemplateColumns: gridTemplate }"
-              :draggable="!previewMode"
-              @dragstart="itemDragStart(catIdx, idx, $event)"
               @dragover.prevent="itemDragOver(catIdx, idx)"
               @drop.prevent="itemDrop(catIdx, idx)"
               @dragend="itemDragEnd">
 
               <!-- Name -->
               <div class="flex items-center gap-1.5 min-w-0 pt-0.5">
-                <span v-if="!previewMode" class="no-print drag-handle text-slate-200 text-base leading-none select-none shrink-0">⠿</span>
+                <span v-if="!previewMode"
+                  class="no-print drag-handle text-slate-300 text-base leading-none select-none shrink-0"
+                  :draggable="true"
+                  @dragstart.stop="itemDragStart(catIdx, idx, $event)">⠿</span>
                 <label v-if="!previewMode" class="no-print shrink-0 cursor-pointer">
                   <input type="checkbox" v-model="item.enabled" class="w-3 h-3">
                 </label>
