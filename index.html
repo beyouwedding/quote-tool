@@ -49,6 +49,7 @@
     <div class="flex items-center gap-3">
       <span class="text-base font-bold text-slate-700">📋 活動報價系統</span>
       <span class="text-xs text-slate-400 font-mono bg-slate-100 px-2 py-0.5 rounded">{{ quote.number }}</span>
+      <span class="text-xs bg-blue-100 text-blue-700 font-bold rounded px-2 py-0.5 font-mono">v{{ quoteVersion }}</span>
     </div>
     <div class="flex gap-2 items-center">
       <button @click="previewMode = !previewMode"
@@ -150,6 +151,21 @@
           placeholder="https://script.google.com/macros/s/AKfy.../exec">
         <p class="text-xs text-slate-400 mt-1">完成 Apps Script 部署後貼入，參考 apps-script.gs 說明</p>
       </div>
+      <!-- 操作者設定 -->
+      <div class="px-5 pb-4">
+        <div class="border-t border-slate-100 pt-4 mt-2">
+          <div class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">操作者設定</div>
+          <div class="flex items-center gap-2">
+            <input v-model="currentUser" @change="saveCurrentUser()"
+              class="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:border-blue-300"
+              placeholder="輸入你的姓名（例：Ken、小美）">
+            <div v-if="currentUser" class="px-2 py-1 rounded text-xs font-bold text-white shrink-0"
+              :style="{ background: userColor(currentUser) }">
+              {{ userInitials(currentUser) }}
+            </div>
+          </div>
+        </div>
+      </div>
 
     </div>
 
@@ -176,6 +192,10 @@
             <div class="flex justify-end gap-3">
               <span class="text-slate-400">報價單編號</span>
               <span class="font-mono font-medium text-slate-700">{{ quote.number }}</span>
+            </div>
+            <div class="flex justify-end gap-3">
+              <span class="text-slate-400">版本</span>
+              <span class="font-mono font-medium text-slate-700">v{{ quoteVersion }}</span>
             </div>
             <div class="flex justify-end gap-3">
               <span class="text-slate-400">報價日期</span>
@@ -260,6 +280,7 @@
           <span class="text-right">項目金額</span>
           <span class="pl-4">備註說明</span>
           <span v-if="!previewMode"></span>
+          <span v-if="!previewMode"></span>
         </div>
 
         <template v-for="(cat, catIdx) in categories" :key="cat.id">
@@ -312,14 +333,16 @@
                   <input type="checkbox" v-model="item.enabled" class="w-3 h-3">
                 </label>
                 <input v-if="!previewMode && item.enabled" v-model="item.name"
-                  class="text-sm border-b border-slate-200 bg-transparent outline-none w-full text-slate-700 min-w-0 truncate">
+                  class="text-sm border-b border-slate-200 bg-transparent outline-none w-full text-slate-700 min-w-0 truncate"
+                  @input="markEditor(item)">
                 <span v-else class="text-sm truncate" :class="item.enabled ? 'text-slate-700' : 'text-slate-300'">{{ item.name }}</span>
               </div>
 
               <!-- Qty -->
               <div class="text-center pt-0.5">
                 <input v-if="!previewMode && item.enabled" v-model.number="item.qty" type="number" min="0"
-                  class="text-sm text-center border-b border-slate-200 bg-transparent outline-none w-full">
+                  class="text-sm text-center border-b border-slate-200 bg-transparent outline-none w-full"
+                  @input="markEditor(item)">
                 <span v-else class="text-sm" :class="item.enabled ? '' : 'text-slate-300'">{{ item.qty }}</span>
               </div>
 
@@ -334,7 +357,7 @@
               <div class="text-right pt-0.5">
                 <input v-if="!previewMode && item.enabled" v-model.number="item.price" type="number" min="0"
                   class="text-sm text-right border-b border-slate-200 bg-transparent outline-none w-full"
-                  placeholder="0">
+                  placeholder="0" @input="markEditor(item)">
                 <span v-else class="text-sm" :class="item.enabled ? 'text-slate-700' : 'text-slate-300'">
                   {{ item.enabled ? fmt(quoteMode === 'client' ? effectiveUnitPrice(item) : item.price) : '-' }}
                 </span>
@@ -374,6 +397,13 @@
                   placeholder="說明（選填，Enter 換行）"
                   @input="$event.target.style.height='auto'; $event.target.style.height=$event.target.scrollHeight+'px'"></textarea>
                 <span v-else class="text-xs whitespace-pre-wrap leading-relaxed" :class="item.enabled ? 'text-slate-400' : 'text-slate-200'">{{ item.note }}</span>
+              </div>
+
+              <!-- Editor badge -->
+              <div v-if="!previewMode" class="flex items-center justify-center">
+                <span v-if="item.editor" class="text-xs font-bold text-white rounded px-1.5 py-0.5"
+                  :style="{ background: userColor(item.editor) }"
+                  :title="item.editor + ' 填寫'">{{ userInitials(item.editor) }}</span>
               </div>
 
               <!-- Remove（編輯模式才有） -->
@@ -552,6 +582,8 @@ createApp({
       previewMode: false,
       archiving: false,
       showHistory: false,
+      currentUser: localStorage.getItem('quoteCurrentUser') || '',
+      quoteVersion: 1,
       historyLoading: false,
       historyList: [],
       dragCatIdx: null,
@@ -700,7 +732,7 @@ createApp({
     //   廠商版 PDF：項目 / 備註 / 數量 / 單位 / 單價 / 百分比 / 固定 / 項目金額 (8 欄)
     //   業主版 PDF：項目 / 備註 / 數量 / 單位 / 單價 / 項目金額 (6 欄)
     gridTemplate() {
-      if (!this.previewMode) return '1.7fr 44px 44px 76px 60px 76px 80px 1.2fr 22px'
+      if (!this.previewMode) return '1.7fr 44px 44px 76px 60px 76px 80px 1.2fr 24px 22px'
       if (this.quoteMode === 'vendor') return '1.9fr 46px 46px 80px 60px 80px 84px 1.3fr'
       return '2.2fr 52px 52px 100px 100px 1.6fr'
     },
@@ -749,8 +781,28 @@ createApp({
       return cat.enabled && cat.items.some(i => i.enabled)
     },
 
+    userColor(name) {
+      if (!name) return '#94a3b8'
+      let hash = 0
+      for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash)
+      const colors = ['#3b6bc7','#059669','#d97706','#dc2626','#7c3aed','#0891b2','#be185d','#65a30d']
+      return colors[Math.abs(hash) % colors.length]
+    },
+    userInitials(name) {
+      if (!name) return '?'
+      const parts = name.trim().split(/\s+/)
+      if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase()
+      return name.slice(0, 2).toUpperCase()
+    },
+    saveCurrentUser() {
+      localStorage.setItem('quoteCurrentUser', this.currentUser)
+    },
+    markEditor(item) {
+      if (this.currentUser) item.editor = this.currentUser
+    },
+
     addItem(cat) {
-      cat.items.push({ enabled: true, name: '新項目', note: '', qty: 1, unit: '式', price: 0, markupPct: 0, markupAmt: 0 })
+      cat.items.push({ enabled: true, name: '新項目', note: '', qty: 1, unit: '式', price: 0, markupPct: 0, markupAmt: 0, editor: this.currentUser })
     },
 
     removeItem(cat, idx) { cat.items.splice(idx, 1) },
@@ -831,6 +883,7 @@ createApp({
       this.quote = { number: this.genNumber(), date: t.toISOString().split('T')[0], validUntil: v.toISOString().split('T')[0] }
       this.client = { company: '', contact: '', eventName: '', eventDate: '' }
       this.discount = { enabled: false, amount: 0 }
+      this.quoteVersion = 1
       this.categories.forEach(cat => cat.items.forEach(i => { i.price = 0; i.qty = 1; i.note = ''; i.markupPct = 0; i.markupAmt = 0 }))
     },
 
@@ -976,6 +1029,7 @@ ${quoteEl.outerHTML}
         const stateJson = JSON.stringify({
           version: '2.0',
           savedAt: new Date().toISOString(),
+          quoteVersion: this.quoteVersion,
           quote: this.quote,
           client: this.client,
           categories: JSON.parse(JSON.stringify(this.categories)),
@@ -984,7 +1038,7 @@ ${quoteEl.outerHTML}
           discount: this.discount
         })
 
-        const baseFileName = `${this.quote.number}_${this.client.company}`.replace(/[\/\\:*?"<>|]/g, '_')
+        const baseFileName = `${this.quote.number}_v${this.quoteVersion}_${this.client.company}`.replace(/[\/\\:*?"<>|]/g, '_')
 
         const payload = JSON.stringify({
           quoteNumber: this.quote.number,
@@ -1007,7 +1061,7 @@ ${quoteEl.outerHTML}
 
         this.submitToScript(payload)
 
-        this.showToast('✅ 已送出（廠商版+業主版 PDF/HTML+資料）至 Google Drive，約 20 秒後請確認')
+        this.showToast(`✅ 已儲存 v${this.quoteVersion}（廠商版+業主版 PDF/HTML+資料）至 Google Drive，約 20 秒後請確認`)
       } catch (err) {
         console.error('Archive error:', err)
         this.showToast('送出失敗：' + (err.message || '請重試'), 'error')
@@ -1054,6 +1108,7 @@ ${quoteEl.outerHTML}
         if (s.notes !== undefined) this.notes = s.notes
         if (s.tax)      Object.assign(this.tax, s.tax)
         if (s.discount) Object.assign(this.discount, s.discount)
+        this.quoteVersion = (s.quoteVersion || 1) + 1
         this.previewMode = false
         this.showHistory = false
         this.showToast('✅ 報價單載入成功，可繼續編輯')
